@@ -30,6 +30,8 @@ unsigned long activeCmd = 0;
 unsigned long activeSource = 0;  // 0x03 = Display, 0x05 = Controller
 int frameIndex = 0;
 int totalDataFrames = 0;
+unsigned long lastStateChange = 0;
+#define ACK_TIMEOUT 500  // ms
 
 // ==================================================
 // MULTIFRAME DATA (0x6000 - 0x6003)
@@ -56,9 +58,9 @@ byte data6003_e[8]  = {0x30, 0x32, 0x31, 0x30, 0x30, 0x32, 0x33, 0x31};
 // SINGLE FRAME DATA (0x6400 - 0x6405)
 // ==================================================
 byte data6400[4] = {0x0A,  // Number of serial cell
-                    0x07,  // Number of paraler cell
-                    0x05,  // Cell Voltage diference
-                    0x00}; //
+                    0x07,  // Number of parallel cell
+                    0x05,  // Cell Voltage difference
+                    0x00};
 byte data6401[6] = {0x02, 0x00,  // Charging cycle D0/D1
                     0x7B, 0x03,  // Max uncharged time M.L.T
                     0x7A, 0x02}; // Last uncharged time N.L.T
@@ -90,6 +92,7 @@ void sendStartFrame()
     CAN.sendMsgBuf(id, 1, 1, data);
 
     state = WAIT_ACK_START;
+    lastStateChange = millis();
 }
 
 // ==================================================
@@ -133,6 +136,7 @@ void sendDataFrame()
 
     frameIndex++;
     state = WAIT_ACK_DATA;
+    lastStateChange = millis();
 }
 
 // ==================================================
@@ -163,6 +167,7 @@ void sendEndFrame()
     }
 
     state = WAIT_ACK_END;
+    lastStateChange = millis();
 }
 
 // ==================================================
@@ -271,6 +276,14 @@ void loop()
     unsigned long now = millis();
 
     // ==================================================
+    // ACK TIMEOUT - reset state machine if no ACK received
+    // ==================================================
+    if (state != IDLE && (now - lastStateChange > ACK_TIMEOUT))
+    {
+        state = IDLE;
+    }
+
+    // ==================================================
     // REQ → RES HANDLING
     // ==================================================
     if (CAN.checkReceive())
@@ -289,105 +302,6 @@ void loop()
         else
         {
             handleRequest(rxId);
-        } 
-
-        // ==================================================
-        // Battery <-> BESST
-        // 0x032164xx -> 0x041A64xx
-        // ==================================================
-        if (rxId == 0x05216400)
-        {
-            Serial.println(rxId, HEX);
-            byte data[4] = {0x0A,  // Number of serial cell
-                            0x07,  // Number of paraler cell
-                            0x05,  // Cell Voltage diference
-                            0x00}; //
-            CAN.sendMsgBuf(0x042A6400, 1, 4, data);
-        }  
-        else if (rxId == 0x05216401)
-        {
-            Serial.println(rxId, HEX);
-            byte data[6] = {0x02, 0x00,  // Charging cycle D0/D1
-                            0x7B, 0x03,  // Max uncharged time M.L.T
-                            0x7A, 0x02}; // Last uncharged time N.L.T
-            CAN.sendMsgBuf(0x042A6401, 1, 6, data);
-        }
-        else if (rxId == 0x05216402)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
-            CAN.sendMsgBuf(0x042A6402, 1, 8, data);
-        }
-        else if (rxId == 0x05216403)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
-            CAN.sendMsgBuf(0x042A6403, 1, 8, data);
-        }
-        else if (rxId == 0x05216404)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0x00, 0x00, 0x00, 0x00};
-            CAN.sendMsgBuf(0x042A6404, 1, 8, data);
-        }
-        else if (rxId == 0x05216405)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-            };
-            CAN.sendMsgBuf(0x042A6405, 1, 8, data);
-        }
-        
-        // ==================================================
-        // Battery <-> Display
-        // 0x032164xx -> 0x041A64xx
-        // ==================================================
-
-        if (rxId == 0x03216400)
-        {
-            Serial.println(rxId, HEX);
-            byte data[4] = {0x0A,  // Number of serial cell
-                            0x07,  // Number of paraler cell
-                            0x05,  // cell Voltage diference
-                            0x00}; //
-            CAN.sendMsgBuf(0x041A6400, 1, 4, data);
-        }
-
-        else if (rxId == 0x03216401)
-        {
-            Serial.println(rxId, HEX);
-            byte data[6] = {0x02, 0x00,  // Charging cycle D0/D1
-                            0x7B, 0x03,  // Max uncharged time M.L.T
-                            0x7A, 0x02}; // Last uncharged time N.L.T
-            CAN.sendMsgBuf(0x041A6401, 1, 6, data);
-        }
-
-        else if (rxId == 0x03216402)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
-            CAN.sendMsgBuf(0x041A6402, 1, 8, data);
-        }
-
-        else if (rxId == 0x03216403)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
-            CAN.sendMsgBuf(0x041A6403, 1, 8, data);
-        }
-
-        else if (rxId == 0x03216404)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0x00, 0x00, 0x00, 0x00};
-            CAN.sendMsgBuf(0x041A6404, 1, 8, data);
-        }
-
-        else if (rxId == 0x03216405)
-        {
-            Serial.println(rxId, HEX);
-            byte data[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-            CAN.sendMsgBuf(0x041A6405, 1, 8, data);
         }
     }
 
