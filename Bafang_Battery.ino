@@ -1,15 +1,37 @@
 #include <SPI.h>
 #include <mcp_can.h>
+#include "JbdBms.h"
 
 #define CAN_CS 10
+#define BMS_RX 2
+#define BMS_TX 3
 
 MCP_CAN CAN(CAN_CS);
+SoftwareSerial bmsSerial(BMS_RX, BMS_TX);
+JbdBms bms(&bmsSerial);
 
 // Timers
 unsigned long t100 = 0;
 unsigned long t200 = 0;
 unsigned long t500 = 0;
 unsigned long t1000 = 0;
+unsigned long tBmsRead = 0;
+#define BMS_READ_INTERVAL 500  // ms
+
+// ==================================================
+// BMS LIVE DATA
+// ==================================================
+float bmsVoltage = 0;       // V
+float bmsCurrent = 0;       // mA
+float bmsSoc = 0;           // %
+uint16_t bmsCycle = 0;
+uint16_t bmsRatedCap = 0;   // 10mAh units
+uint16_t bmsResidualCap = 0; // 10mAh units
+float bmsTemp1 = 0;         // °C
+float bmsTemp2 = 0;         // °C
+uint16_t bmsProtection = 0;
+packCellInfoStruct bmsCells = {0};
+bool bmsDataValid = false;
 
 // ==================================================
 // STATE MACHINE
@@ -68,6 +90,62 @@ byte data6402[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
 byte data6403[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E, 0xA3, 0x0E};
 byte data6404[8] = {0xA3, 0x0E, 0xA3, 0x0E, 0x00, 0x00, 0x00, 0x00};
 byte data6405[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+// ==================================================
+// BMS DATA REFRESH
+// ==================================================
+void updateBmsData()
+{
+    if (bms.readBmsData())
+    {
+        bmsVoltage = bms.getVoltage();
+        bmsCurrent = bms.getCurrent();
+        bmsSoc = bms.getChargePercentage();
+        bmsCycle = bms.getCycle();
+        bmsRatedCap = bms.getRatedCapacity();
+        bmsResidualCap = bms.getResidualCapacity();
+        bmsTemp1 = bms.getTemp1();
+        bmsTemp2 = bms.getTemp2();
+        bmsProtection = bms.getProtectionState();
+        bmsDataValid = true;
+    }
+
+    if (bms.readPackData())
+    {
+        bmsCells = bms.getPackCellInfo();
+
+        // Update data6400: [numSerial, numParallel, cellDiff_mV, 0x00]
+        data6400[0] = bmsCells.NumOfCells;
+        data6400[2] = (byte)(bmsCells.CellDiff & 0xFF);
+
+        // Update data6401: [cycle_L, cycle_H, 0x00, 0x00, 0x00, 0x00]
+        data6401[0] = (byte)(bmsCycle & 0xFF);
+        data6401[1] = (byte)((bmsCycle >> 8) & 0xFF);
+
+        // Update data6402-6405: cell voltages (2 bytes per cell, little-endian)
+        // 6402: cells 1-4, 6403: cells 5-8, 6404: cells 9-12, 6405: cells 13-16
+        for (int i = 0; i < 4 && i < bmsCells.NumOfCells; i++)
+        {
+            data6402[i * 2]     = (byte)(bmsCells.CellVoltage[i] & 0xFF);
+            data6402[i * 2 + 1] = (byte)((bmsCells.CellVoltage[i] >> 8) & 0xFF);
+        }
+        for (int i = 0; i < 4 && (i + 4) < bmsCells.NumOfCells; i++)
+        {
+            data6403[i * 2]     = (byte)(bmsCells.CellVoltage[i + 4] & 0xFF);
+            data6403[i * 2 + 1] = (byte)((bmsCells.CellVoltage[i + 4] >> 8) & 0xFF);
+        }
+        for (int i = 0; i < 4 && (i + 8) < bmsCells.NumOfCells; i++)
+        {
+            data6404[i * 2]     = (byte)(bmsCells.CellVoltage[i + 8] & 0xFF);
+            data6404[i * 2 + 1] = (byte)((bmsCells.CellVoltage[i + 8] >> 8) & 0xFF);
+        }
+        for (int i = 0; i < 4 && (i + 12) < bmsCells.NumOfCells; i++)
+        {
+            data6405[i * 2]     = (byte)(bmsCells.CellVoltage[i + 12] & 0xFF);
+            data6405[i * 2 + 1] = (byte)((bmsCells.CellVoltage[i + 12] >> 8) & 0xFF);
+        }
+    }
+}
 
 // ==================================================
 // SEND START FRAME
@@ -268,7 +346,10 @@ void setup()
     CAN.begin(CAN_250KBPS, MCP_8MHz);
     CAN.setMode(MODE_NORMAL);
 
-    Serial.println("Bafang CAN emulator started");
+    Serial.println("Bafang CAN emulator + JBD BMS started");
+
+    // Initial BMS read
+    updateBmsData();
 }
 
 void loop()
@@ -306,30 +387,62 @@ void loop()
     }
 
     // ==================================================
-    // 100 ms
+    // BMS READ (every 500ms)
+    // ==================================================
+    if (now - tBmsRead >= BMS_READ_INTERVAL)
+    {
+        tBmsRead = now;
+        updateBmsData();
+    }
+
+    // ==================================================
+    // 100 ms - Current, Voltage, Temperature
     // ==================================================
     if (now - t100 >= 100)
     {
         t100 = now;
 
-        byte data[5] = {0x00, 0x00, // Current
-                        0x36, 0x10, //  Battery voltage
-                        0x40};      // Temperature 'F
+        // Current: signed 16-bit mA (big-endian)
+        int16_t current_raw = (int16_t)(bmsCurrent / 10);
+        // Voltage: 16-bit in 10mV units (big-endian)
+        uint16_t voltage_raw = (uint16_t)(bmsVoltage * 10);
+        // Temperature: °F = °C * 9/5 + 32
+        byte tempF = (byte)(bmsTemp1 * 9.0 / 5.0 + 32.0);
+
+        byte data[5] = {(byte)((current_raw >> 8) & 0xFF),
+                        (byte)(current_raw & 0xFF),
+                        (byte)((voltage_raw >> 8) & 0xFF),
+                        (byte)(voltage_raw & 0xFF),
+                        tempF};
         CAN.sendMsgBuf(0x04F83401, 1, 5, data);
     }
 
     // ==================================================
-    // 200 ms
+    // 200 ms - Capacity, SOC, SOH
     // ==================================================
     if (now - t200 >= 200)
     {
         t200 = now;
 
-        byte data[7] = {0x84, 0x4E, // Full charge capacity mAh
-                        0x2F, 0x2B, // Battery level mAh
-                        0x37,       // SOC RelChargeState
-                        0x38,       // AbsChargeState
-                        0x64};      // SOH
+        // Full charge capacity from BMS (10mAh units -> mAh)
+        uint16_t fullCap = bmsRatedCap * 10;
+        // Remaining capacity from BMS
+        uint16_t remainCap = bmsResidualCap * 10;
+        byte soc = (byte)bmsSoc;
+        byte absSoc = soc;
+        // SOH = (FCC / Design Capacity) * 100
+        // FCC estimated from: residualCap / (soc/100)
+        uint16_t designCap = bmsRatedCap;
+        uint16_t fullChargeCap = (bmsSoc > 0) ? (uint16_t)((uint32_t)bmsResidualCap * 100 / (uint16_t)bmsSoc) : designCap;
+        byte soh = (designCap > 0) ? (byte)((uint32_t)fullChargeCap * 100 / designCap) : 100;
+
+        byte data[7] = {(byte)((fullCap >> 8) & 0xFF),
+                        (byte)(fullCap & 0xFF),
+                        (byte)((remainCap >> 8) & 0xFF),
+                        (byte)(remainCap & 0xFF),
+                        soc,
+                        absSoc,
+                        soh};
         CAN.sendMsgBuf(0x04F83400, 1, 7, data);
     }
 
