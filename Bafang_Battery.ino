@@ -32,7 +32,7 @@
 
 #define CAN_ID_CURRENT_VOLTAGE  0x04F83401UL
 #define CAN_ID_CAPACITY_SOC     0x04F83400UL
-#define CAN_ID_STATUS           0x04F83402UL
+#define CAN_ID_HEARTBEAT        0x04F83402UL
 #define CAN_ID_TIMESTAMP        0x04F83403UL
 
 // ==================================================
@@ -339,9 +339,9 @@ static void sendCapacitySoc() {
     CAN.sendMsgBuf(CAN_ID_CAPACITY_SOC, 1, 7, data);
 }
 
-static void sendStatus() {
+static void sendHeartbeat() {
     byte data[1] = {0x00};
-    CAN.sendMsgBuf(CAN_ID_STATUS, 1, 1, data);
+    CAN.sendMsgBuf(CAN_ID_HEARTBEAT, 1, 1, data);
 }
 
 static void sendTimestamp() {
@@ -405,7 +405,7 @@ void loop() {
 
     if (now - t500 >= INTERVAL_500MS) {
         t500 = now;
-        sendStatus();
+        sendHeartbeat();
     }
 
     if (now - t1000 >= INTERVAL_1000MS) {
