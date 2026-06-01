@@ -159,7 +159,7 @@ static const MultiframeCmd* findMultiframeCmd(uint16_t cmdId) {
 // ==================================================
 static void updateBmsData() {
     // Hardcoded test values (BMS readout commented out)
-    bmsData.voltage     = 37.0;    // V
+    bmsData.voltage     = 39.0;    // V
     bmsData.current     = 0.0;     // mA
     bmsData.soc         = 85.0;    // %
     bmsData.cycle       = 2;
@@ -170,14 +170,14 @@ static void updateBmsData() {
     bmsData.protection  = 0;
     bmsData.valid       = true;
 
-    // 10 cells @ ~3700 mV each
+    // 10 cells @ ~3900 mV each
     bmsData.cells.NumOfCells = 10;
     for (byte i = 0; i < 10; i++)
-        bmsData.cells.CellVoltage[i] = 3700 + i;  // slight variation
-    bmsData.cells.CellLow  = 3700;
-    bmsData.cells.CellHigh = 3709;
+        bmsData.cells.CellVoltage[i] = 3900 + i;  // slight variation
+    bmsData.cells.CellLow  = 3900;
+    bmsData.cells.CellHigh = 3909;
     bmsData.cells.CellDiff = 9;
-    bmsData.cells.CellAvg  = 3704;
+    bmsData.cells.CellAvg  = 3904;
 
     // Update single frame data
     data6400[0] = bmsData.cells.NumOfCells;
@@ -379,7 +379,7 @@ static void sendHeartbeat() {
 }
 
 static void sendTimestamp() {
-    byte data[6] = {0x49, 0x16, 0x01, 0x08, 0x11, 0x25};
+    byte data[6] = {0x49, 0x11, 0x15, 0x01, 0x06, 0x26}; //Battery Time Information s/m/h d/m/y
     CAN.sendMsgBuf(CAN_ID_TIMESTAMP, 1, 6, data);
 }
 
