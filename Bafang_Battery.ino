@@ -334,14 +334,14 @@ static void handleRequest(unsigned long rxId) {
 // ==================================================
 static void sendCurrentVoltageTemp() {
     int16_t currentRaw = (int16_t)(bmsData.current / 10);
-    uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10);
+    uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10);  // units: 100mV
     byte tempF = (byte)(bmsData.temp1 * 9.0 / 5.0 + 32.0);
 
     byte data[5] = {
-        (byte)((currentRaw >> 8) & 0xFF),
         (byte)(currentRaw & 0xFF),
-        (byte)((voltageRaw >> 8) & 0xFF),
+        (byte)((currentRaw >> 8) & 0xFF),
         (byte)(voltageRaw & 0xFF),
+        (byte)((voltageRaw >> 8) & 0xFF),
         tempF
     };
     CAN.sendMsgBuf(CAN_ID_CURRENT_VOLTAGE, 1, 5, data);
@@ -362,10 +362,10 @@ static void sendCapacitySoc() {
         : 100;
 
     byte data[7] = {
-        (byte)((fullCap >> 8) & 0xFF),
         (byte)(fullCap & 0xFF),
-        (byte)((remainCap >> 8) & 0xFF),
+        (byte)((fullCap >> 8) & 0xFF),
         (byte)(remainCap & 0xFF),
+        (byte)((remainCap >> 8) & 0xFF),
         soc,
         soc,   // absSoc = soc
         soh
