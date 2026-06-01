@@ -290,23 +290,15 @@ static void sendEndFrame() {
 static void sendSingleFrame(uint16_t cmdId) {
     uint16_t index = cmdId - 0x6400;
     if (index >= NUM_SINGLE_FRAMES) return;
-byte len = SINGLE_FRAMES[index].len;
-byte* data = SINGLE_FRAMES[index].data;
+    
     unsigned long canId = CAN_BASE_SINGLE(activeSource) | cmdId;
-    Serial.print(canId, HEX);
-    Serial.print(" ");
-    for (byte i = 0; i < len; i++) {
-        Serial.print(data[i], HEX);
-        Serial.print(" ");
-    }
-    Serial.println();
     CAN.sendMsgBuf(canId, 1, SINGLE_FRAMES[index].len, SINGLE_FRAMES[index].data);
 }
 
 // ==================================================
 // ACK HANDLER
 // ==================================================
-static void handleAck(unsigned long rxId) {
+static bool handleAck(unsigned long rxId) {
     if (activeCmd == NULL) return;
 
     unsigned long expectedAck = CAN_BASE_ACK(activeSource) | activeCmd->cmdId;
@@ -446,14 +438,14 @@ void loop() {
         CAN.readMsgBuf(&len, buf);
         unsigned long rxId = CAN.getCanId();
 
-        if ((rxId & 0xFFFFFFF0) == 0x05216400) {
-            Serial.println(rxId, HEX);
-        }
-
-        if (state != IDLE)
-            handleAck(rxId);
-        else
+        if (state != IDLE) {
+            if (!handleAck(rxId)) {
+                // jeśli to nie ACK → traktuj jako normalny request
+                handleRequest(rxId);
+            }
+        } else {
             handleRequest(rxId);
+        }
     }
 
     // Periodic BMS read
