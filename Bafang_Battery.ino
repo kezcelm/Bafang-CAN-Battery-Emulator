@@ -8,8 +8,6 @@
 #define CAN_CS      10
 #define BMS_RX      2
 #define BMS_TX      3
-#define CAN_SPEED   CAN_250KBPS
-#define CAN_CLOCK   MCP_8MHz
 
 // ==================================================
 // TIMING INTERVALS (ms)
@@ -66,21 +64,30 @@ static BmsData bmsData = {};
 // ==================================================
 
 // 0x6000: HW version "C20010 4.3"
-static const byte DATA_6000_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x34};
-static const byte DATA_6000_E[] = {0x2E, 0x33};
+// static const byte DATA_6000_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x34};
+// static const byte DATA_6000_E[] = {0x2E, 0x33};
+static const byte DATA_6000_D[] = {0x50, 0x6F, 0x77, 0x65, 0x72, 0x54, 0x75, 0x62};
+static const byte DATA_6000_E[] = {0x65, 0x20};
 
 // 0x6001: SW version "C20010 1.5"
-static const byte DATA_6001_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x31};
-static const byte DATA_6001_E[] = {0x2E, 0x35};
+// static const byte DATA_6001_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x31};
+// static const byte DATA_6001_E[] = {0x2E, 0x35};
+static const byte DATA_6001_D[] = {0x42, 0x6F, 0x73, 0x63, 0x68, 0x20, 0x37, 0x35};
+static const byte DATA_6001_E[] = {0x30, 0x20};
 
 // 0x6002: Model "C20010"
-static const byte DATA_6002_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30};
+// static const byte DATA_6002_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30};
+static const byte DATA_6002_D[] = {0x4A, 0x62, 0x64, 0x42, 0x6D, 0x73};
 
 // 0x6003: Serial number (3 data frames + end frame)
-static const byte DATA_6003_D0[] = {0x41, 0x4C, 0x49, 0x31, 0x30, 0x53, 0x32, 0x33};
-static const byte DATA_6003_D1[] = {0x41, 0x4D, 0x30, 0x38, 0x37, 0x53, 0x43, 0x32};
-static const byte DATA_6003_D2[] = {0x34, 0x30, 0x37, 0x31, 0x37, 0x43, 0x32, 0x30};
-static const byte DATA_6003_E[]  = {0x30, 0x32, 0x31, 0x30, 0x30, 0x32, 0x33, 0x31};
+// static const byte DATA_6003_D0[] = {0x41, 0x4C, 0x49, 0x31, 0x30, 0x53, 0x32, 0x33};
+// static const byte DATA_6003_D1[] = {0x41, 0x4D, 0x30, 0x38, 0x37, 0x53, 0x43, 0x32};
+// static const byte DATA_6003_D2[] = {0x34, 0x30, 0x37, 0x31, 0x37, 0x43, 0x32, 0x30};
+// static const byte DATA_6003_E[]  = {0x30, 0x32, 0x31, 0x30, 0x30, 0x32, 0x33, 0x31};
+static const byte DATA_6003_D0[] = {0x43, 0x68, 0x75, 0x6a, 0x2c, 0x20, 0x64, 0x75};
+static const byte DATA_6003_D1[] = {0x70, 0x61, 0x20, 0x69, 0x20, 0x6b, 0x61, 0x6d};
+static const byte DATA_6003_D2[] = {0x69, 0x65, 0x6e, 0x69, 0x20, 0x6b, 0x75, 0x70};
+static const byte DATA_6003_E[]  = {0x61, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20};
 
 // Multiframe command descriptor
 struct MultiframeCmd {
@@ -105,9 +112,13 @@ static const MultiframeCmd MULTIFRAME_CMDS[] = {
 // ==================================================
 // SINGLE FRAME DATA (0x6400-0x6405)
 // ==================================================
-static byte data6400[4] = {0x0A, 0x07, 0x05, 0x00};
-static byte data6401[6] = {0x02, 0x00, 0x7B, 0x03, 0x7A, 0x02};
+static byte data6400[4] = {0};
+static byte data6401[6] = {0};
 static byte dataCellVoltages[32] = {0};  // 16 cells * 2 bytes LE
+
+static byte parallel_count = 7;
+static int MNT = 48;
+static int LNT = 96;
 
 // Lookup table for single frame commands
 struct SingleFrameEntry {
@@ -116,8 +127,8 @@ struct SingleFrameEntry {
 };
 
 static const SingleFrameEntry SINGLE_FRAMES[] = {
-    {data6400,               4},  // 0x6400
-    {data6401,               6},  // 0x6401
+    {&data6400[0],           4},  // 0x6400
+    {&data6401[0],           6},  // 0x6401
     {&dataCellVoltages[0],   8},  // 0x6402: cells 1-4
     {&dataCellVoltages[8],   8},  // 0x6403: cells 5-8
     {&dataCellVoltages[16],  8},  // 0x6404: cells 9-12
@@ -172,19 +183,25 @@ static void updateBmsData() {
 
     // 10 cells @ ~3900 mV each
     bmsData.cells.NumOfCells = 10;
-    for (byte i = 0; i < 10; i++)
-        bmsData.cells.CellVoltage[i] = 3900 + i;  // slight variation
-    bmsData.cells.CellLow  = 3900;
-    bmsData.cells.CellHigh = 3909;
+    for (byte i = 0; i < bmsData.cells.NumOfCells; i++)
+        bmsData.cells.CellVoltage[i] = random(3896, 3906);
+    bmsData.cells.CellLow  = 3896;
+    bmsData.cells.CellHigh = 3906;
     bmsData.cells.CellDiff = 9;
-    bmsData.cells.CellAvg  = 3904;
+    bmsData.cells.CellAvg  = 3900;
 
     // Update single frame data
     data6400[0] = bmsData.cells.NumOfCells;
-    data6400[2] = (byte)(bmsData.cells.CellDiff & 0xFF);
+    data6400[1] = parallel_count;
+    data6400[2] = (byte)(bmsData.ratedCap & 0xFF);
+    data6400[3] =  (byte)((bmsData.ratedCap >> 8) & 0xFF);
 
     data6401[0] = (byte)(bmsData.cycle & 0xFF);
     data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
+    data6401[2] = (byte)(MNT & 0xFF);
+    data6401[3] = (byte)((MNT >> 8) & 0xFF);
+    data6401[4] = (byte)(LNT & 0xFF);
+    data6401[5] = (byte)((LNT >> 8) & 0xFF);
 
     for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
         dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
@@ -209,11 +226,18 @@ static void updateBmsData() {
     if (bms.readPackData()) {
         bmsData.cells = bms.getPackCellInfo();
 
+        // Update single frame data
         data6400[0] = bmsData.cells.NumOfCells;
-        data6400[2] = (byte)(bmsData.cells.CellDiff & 0xFF);
+        data6400[1] = parallel_count;
+        data6400[2] = (byte)(bmsData.ratedCap & 0xFF);
+        data6400[3] =  (byte)((bmsData.ratedCap >> 8) & 0xFF);
 
         data6401[0] = (byte)(bmsData.cycle & 0xFF);
         data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
+        data6401[2] = (byte)(MNT & 0xFF);
+        data6401[3] = (byte)((MNT >> 8) & 0xFF);
+        data6401[4] = (byte)(LNT & 0xFF);
+        data6401[5] = (byte)((LNT >> 8) & 0xFF);
 
         for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
             dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
@@ -266,8 +290,16 @@ static void sendEndFrame() {
 static void sendSingleFrame(uint16_t cmdId) {
     uint16_t index = cmdId - 0x6400;
     if (index >= NUM_SINGLE_FRAMES) return;
-
+byte len = SINGLE_FRAMES[index].len;
+byte* data = SINGLE_FRAMES[index].data;
     unsigned long canId = CAN_BASE_SINGLE(activeSource) | cmdId;
+    Serial.print(canId, HEX);
+    Serial.print(" ");
+    for (byte i = 0; i < len; i++) {
+        Serial.print(data[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
     CAN.sendMsgBuf(canId, 1, SINGLE_FRAMES[index].len, SINGLE_FRAMES[index].data);
 }
 
@@ -413,6 +445,10 @@ void loop() {
         byte buf[8];
         CAN.readMsgBuf(&len, buf);
         unsigned long rxId = CAN.getCanId();
+
+        if ((rxId & 0xFFFFFFF0) == 0x05216400) {
+            Serial.println(rxId, HEX);
+        }
 
         if (state != IDLE)
             handleAck(rxId);
