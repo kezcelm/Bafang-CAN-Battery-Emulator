@@ -158,6 +158,41 @@ static const MultiframeCmd* findMultiframeCmd(uint16_t cmdId) {
 // BMS DATA REFRESH
 // ==================================================
 static void updateBmsData() {
+    // Hardcoded test values (BMS readout commented out)
+    bmsData.voltage     = 37.0;    // V
+    bmsData.current     = 0.0;     // mA
+    bmsData.soc         = 85.0;    // %
+    bmsData.cycle       = 2;
+    bmsData.ratedCap    = 2010;    // 10mAh units (20.1 Ah)
+    bmsData.residualCap = 1709;    // 10mAh units (17.09 Ah, ~85%)
+    bmsData.temp1       = 22.0;    // °C
+    bmsData.temp2       = 23.0;    // °C
+    bmsData.protection  = 0;
+    bmsData.valid       = true;
+
+    // 10 cells @ ~3700 mV each
+    bmsData.cells.NumOfCells = 10;
+    for (byte i = 0; i < 10; i++)
+        bmsData.cells.CellVoltage[i] = 3700 + i;  // slight variation
+    bmsData.cells.CellLow  = 3700;
+    bmsData.cells.CellHigh = 3709;
+    bmsData.cells.CellDiff = 9;
+    bmsData.cells.CellAvg  = 3704;
+
+    // Update single frame data
+    data6400[0] = bmsData.cells.NumOfCells;
+    data6400[2] = (byte)(bmsData.cells.CellDiff & 0xFF);
+
+    data6401[0] = (byte)(bmsData.cycle & 0xFF);
+    data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
+
+    for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
+        dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
+        dataCellVoltages[i * 2 + 1] = (byte)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
+    }
+
+    /*
+    // --- LIVE BMS READOUT (uncomment to restore) ---
     if (bms.readBmsData()) {
         bmsData.voltage    = bms.getVoltage();
         bmsData.current    = bms.getCurrent();
@@ -174,19 +209,18 @@ static void updateBmsData() {
     if (bms.readPackData()) {
         bmsData.cells = bms.getPackCellInfo();
 
-        // Update single frame data from live BMS values
         data6400[0] = bmsData.cells.NumOfCells;
         data6400[2] = (byte)(bmsData.cells.CellDiff & 0xFF);
 
         data6401[0] = (byte)(bmsData.cycle & 0xFF);
         data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
 
-        // Pack cell voltages into contiguous array (little-endian)
         for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
             dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
             dataCellVoltages[i * 2 + 1] = (byte)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
         }
     }
+    */
 }
 
 // ==================================================
