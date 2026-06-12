@@ -1,6 +1,9 @@
 #include "driver/twai.h"
 #include "JbdBms.h"
 
+struct MultiframeCmd;
+struct SingleFrameEntry;
+
 // ==================================================
 // HARDWARE CONFIG (ESP32 + SN65HVD230)
 // ==================================================

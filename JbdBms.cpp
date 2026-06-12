@@ -15,17 +15,17 @@ JbdBms::JbdBms(HardwareSerial * t_hardwareSerial){
 }
 
 
-JbdBms::JbdBms(SoftwareSerial * t_softwareSerial){
-  m_port = t_softwareSerial;
-  m_hwserial = false;
-  static_cast<SoftwareSerial*>(m_port)->begin(9600);
-}
+// JbdBms::JbdBms(SoftwareSerial * t_softwareSerial){
+//   m_port = t_softwareSerial;
+//   m_hwserial = false;
+//   static_cast<SoftwareSerial*>(m_port)->begin(9600);
+// }
 
 JbdBms::JbdBms(int rx, int tx){
-  SoftwareSerial mySerial(rx, tx);
+  HardwareSerial mySerial(1);
   m_port = &mySerial;
   m_hwserial = false;
-  static_cast<SoftwareSerial*>(m_port)->begin(9600);
+  static_cast<HardwareSerial*>(m_port)->begin(9600);
 }
 
 /*!

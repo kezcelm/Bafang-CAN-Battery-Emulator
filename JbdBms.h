@@ -9,7 +9,7 @@
 #define JBD_BMS_HPP_
 
 #include "Arduino.h"
-#include <SoftwareSerial.h>
+#include <HardwareSerial.h>
 
 #define BMS_LEN_RESPONCE 42
 /* \defgroup BMS_STATUS BMS protection status masks
@@ -59,7 +59,7 @@ class JbdBms
 {
 public:
   JbdBms(HardwareSerial * t_hardwareSerial);
-  JbdBms(SoftwareSerial * t_softwareSerial);
+  // JbdBms(SoftwareSerial * t_softwareSerial);
   JbdBms(int rx, int tx);
 
   bool readBmsData();
