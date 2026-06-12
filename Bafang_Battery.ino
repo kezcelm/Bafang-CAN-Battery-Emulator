@@ -1,13 +1,13 @@
-#include <SPI.h>
-#include <mcp_can.h>
+#include "driver/twai.h"
 #include "JbdBms.h"
 
 // ==================================================
-// HARDWARE CONFIG
+// HARDWARE CONFIG (ESP32 + SN65HVD230)
 // ==================================================
-#define CAN_CS      10
-#define BMS_RX      2
-#define BMS_TX      3
+#define CAN_TX_PIN  GPIO_NUM_4
+#define CAN_RX_PIN  GPIO_NUM_5
+#define BMS_RX      16
+#define BMS_TX      17
 
 // ==================================================
 // TIMING INTERVALS (ms)
@@ -36,9 +36,21 @@
 // ==================================================
 // HARDWARE INSTANCES
 // ==================================================
-MCP_CAN CAN(CAN_CS);
-SoftwareSerial bmsSerial(BMS_RX, BMS_TX);
+HardwareSerial bmsSerial(2);  // UART2
 JbdBms bms(&bmsSerial);
+
+// ==================================================
+// CAN HELPER: send extended frame
+// ==================================================
+static bool canSend(uint32_t id, const uint8_t* data, uint8_t len) {
+    twai_message_t msg = {};
+    msg.identifier = id;
+    msg.extd = 1;           // 29-bit extended ID
+    msg.data_length_code = len;
+    if (data && len > 0)
+        memcpy(msg.data, data, len);
+    return twai_transmit(&msg, pdMS_TO_TICKS(10)) == ESP_OK;
+}
 
 // ==================================================
 // BMS LIVE DATA
@@ -64,41 +76,32 @@ static BmsData bmsData = {};
 // ==================================================
 
 // 0x6000: HW version "C20010 4.3"
-// static const byte DATA_6000_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x34};
-// static const byte DATA_6000_E[] = {0x2E, 0x33};
-static const byte DATA_6000_D[] = {0x50, 0x6F, 0x77, 0x65, 0x72, 0x54, 0x75, 0x62};
-static const byte DATA_6000_E[] = {0x65, 0x20};
+static const uint8_t DATA_6000_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x34};
+static const uint8_t DATA_6000_E[] = {0x2E, 0x33};
 
 // 0x6001: SW version "C20010 1.5"
-// static const byte DATA_6001_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x31};
-// static const byte DATA_6001_E[] = {0x2E, 0x35};
-static const byte DATA_6001_D[] = {0x42, 0x6F, 0x73, 0x63, 0x68, 0x20, 0x37, 0x35};
-static const byte DATA_6001_E[] = {0x30, 0x20};
+static const uint8_t DATA_6001_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30, 0x20, 0x31};
+static const uint8_t DATA_6001_E[] = {0x2E, 0x35};
 
 // 0x6002: Model "C20010"
-// static const byte DATA_6002_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30};
-static const byte DATA_6002_D[] = {0x4A, 0x62, 0x64, 0x42, 0x6D, 0x73};
+static const uint8_t DATA_6002_D[] = {0x43, 0x32, 0x30, 0x30, 0x31, 0x30};
 
 // 0x6003: Serial number (3 data frames + end frame)
-// static const byte DATA_6003_D0[] = {0x41, 0x4C, 0x49, 0x31, 0x30, 0x53, 0x32, 0x33};
-// static const byte DATA_6003_D1[] = {0x41, 0x4D, 0x30, 0x38, 0x37, 0x53, 0x43, 0x32};
-// static const byte DATA_6003_D2[] = {0x34, 0x30, 0x37, 0x31, 0x37, 0x43, 0x32, 0x30};
-// static const byte DATA_6003_E[]  = {0x30, 0x32, 0x31, 0x30, 0x30, 0x32, 0x33, 0x31};
-static const byte DATA_6003_D0[] = {0x43, 0x68, 0x75, 0x6a, 0x2c, 0x20, 0x64, 0x75};
-static const byte DATA_6003_D1[] = {0x70, 0x61, 0x20, 0x69, 0x20, 0x6b, 0x61, 0x6d};
-static const byte DATA_6003_D2[] = {0x69, 0x65, 0x6e, 0x69, 0x20, 0x6b, 0x75, 0x70};
-static const byte DATA_6003_E[]  = {0x61, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20};
+static const uint8_t DATA_6003_D0[] = {0x41, 0x4C, 0x49, 0x31, 0x30, 0x53, 0x32, 0x33};
+static const uint8_t DATA_6003_D1[] = {0x41, 0x4D, 0x30, 0x38, 0x37, 0x53, 0x43, 0x32};
+static const uint8_t DATA_6003_D2[] = {0x34, 0x30, 0x37, 0x31, 0x37, 0x43, 0x32, 0x30};
+static const uint8_t DATA_6003_E[]  = {0x30, 0x32, 0x31, 0x30, 0x30, 0x32, 0x33, 0x31};
 
 // Multiframe command descriptor
 struct MultiframeCmd {
     uint16_t cmdId;
-    const byte* dataFrames[3];
-    byte dataFrameLens[3];
-    byte numDataFrames;
-    const byte* endFrame;
-    byte endFrameLen;
-    byte totalLen;
-    uint16_t endIdOffset;  // added to end base ID
+    const uint8_t* dataFrames[3];
+    uint8_t dataFrameLens[3];
+    uint8_t numDataFrames;
+    const uint8_t* endFrame;
+    uint8_t endFrameLen;
+    uint8_t totalLen;
+    uint16_t endIdOffset;
 };
 
 static const MultiframeCmd MULTIFRAME_CMDS[] = {
@@ -112,23 +115,18 @@ static const MultiframeCmd MULTIFRAME_CMDS[] = {
 // ==================================================
 // SINGLE FRAME DATA (0x6400-0x6405)
 // ==================================================
-static byte data6400[4] = {0};
-static byte data6401[6] = {0};
-static byte dataCellVoltages[32] = {0};  // 16 cells * 2 bytes LE
+static uint8_t data6400[4] = {0x0A, 0x07, 0x05, 0x00};
+static uint8_t data6401[6] = {0x02, 0x00, 0x7B, 0x03, 0x7A, 0x02};
+static uint8_t dataCellVoltages[32] = {0};  // 16 cells * 2 bytes LE
 
-static byte parallel_count = 7;
-static int MNT = 48;
-static int LNT = 96;
-
-// Lookup table for single frame commands
 struct SingleFrameEntry {
-    byte* data;
-    byte len;
+    uint8_t* data;
+    uint8_t len;
 };
 
 static const SingleFrameEntry SINGLE_FRAMES[] = {
-    {&data6400[0],           4},  // 0x6400
-    {&data6401[0],           6},  // 0x6401
+    {data6400,               4},  // 0x6400
+    {data6401,               6},  // 0x6401
     {&dataCellVoltages[0],   8},  // 0x6402: cells 1-4
     {&dataCellVoltages[8],   8},  // 0x6403: cells 5-8
     {&dataCellVoltages[16],  8},  // 0x6404: cells 9-12
@@ -142,9 +140,9 @@ static const SingleFrameEntry SINGLE_FRAMES[] = {
 enum State { IDLE, WAIT_ACK_START, WAIT_ACK_DATA, WAIT_ACK_END };
 
 static State state = IDLE;
-static byte activeSource = 0;
+static uint8_t activeSource = 0;
 static const MultiframeCmd* activeCmd = NULL;
-static byte frameIndex = 0;
+static uint8_t frameIndex = 0;
 static unsigned long lastStateChange = 0;
 
 // Timers
@@ -158,7 +156,7 @@ static unsigned long t1000 = 0;
 // HELPER: Find multiframe command by ID
 // ==================================================
 static const MultiframeCmd* findMultiframeCmd(uint16_t cmdId) {
-    for (byte i = 0; i < NUM_MULTIFRAME_CMDS; i++) {
+    for (uint8_t i = 0; i < NUM_MULTIFRAME_CMDS; i++) {
         if (MULTIFRAME_CMDS[i].cmdId == cmdId)
             return &MULTIFRAME_CMDS[i];
     }
@@ -170,42 +168,36 @@ static const MultiframeCmd* findMultiframeCmd(uint16_t cmdId) {
 // ==================================================
 static void updateBmsData() {
     // Hardcoded test values (BMS readout commented out)
-    bmsData.voltage     = 39.0;    // V
-    bmsData.current     = 0.0;     // mA
-    bmsData.soc         = 85.0;    // %
+    bmsData.voltage     = 39.0;
+    bmsData.current     = 0.0;
+    bmsData.soc         = 85.0;
     bmsData.cycle       = 2;
     bmsData.ratedCap    = 2010;    // 10mAh units (20.1 Ah)
     bmsData.residualCap = 1709;    // 10mAh units (17.09 Ah, ~85%)
-    bmsData.temp1       = 22.0;    // °C
-    bmsData.temp2       = 23.0;    // °C
+    bmsData.temp1       = 22.0;
+    bmsData.temp2       = 23.0;
     bmsData.protection  = 0;
     bmsData.valid       = true;
 
     // 10 cells @ ~3900 mV each
     bmsData.cells.NumOfCells = 10;
-    for (byte i = 0; i < bmsData.cells.NumOfCells; i++)
-        bmsData.cells.CellVoltage[i] = random(3896, 3906);
-    bmsData.cells.CellLow  = 3896;
-    bmsData.cells.CellHigh = 3906;
+    for (uint8_t i = 0; i < 10; i++)
+        bmsData.cells.CellVoltage[i] = 3900 + i;
+    bmsData.cells.CellLow  = 3900;
+    bmsData.cells.CellHigh = 3909;
     bmsData.cells.CellDiff = 9;
-    bmsData.cells.CellAvg  = 3900;
+    bmsData.cells.CellAvg  = 3904;
 
     // Update single frame data
     data6400[0] = bmsData.cells.NumOfCells;
-    data6400[1] = parallel_count;
-    data6400[2] = (byte)(bmsData.ratedCap & 0xFF);
-    data6400[3] =  (byte)((bmsData.ratedCap >> 8) & 0xFF);
+    data6400[2] = (uint8_t)(bmsData.cells.CellDiff & 0xFF);
 
-    data6401[0] = (byte)(bmsData.cycle & 0xFF);
-    data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
-    data6401[2] = (byte)(MNT & 0xFF);
-    data6401[3] = (byte)((MNT >> 8) & 0xFF);
-    data6401[4] = (byte)(LNT & 0xFF);
-    data6401[5] = (byte)((LNT >> 8) & 0xFF);
+    data6401[0] = (uint8_t)(bmsData.cycle & 0xFF);
+    data6401[1] = (uint8_t)((bmsData.cycle >> 8) & 0xFF);
 
-    for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
-        dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
-        dataCellVoltages[i * 2 + 1] = (byte)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
+    for (uint8_t i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
+        dataCellVoltages[i * 2]     = (uint8_t)(bmsData.cells.CellVoltage[i] & 0xFF);
+        dataCellVoltages[i * 2 + 1] = (uint8_t)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
     }
 
     /*
@@ -226,22 +218,15 @@ static void updateBmsData() {
     if (bms.readPackData()) {
         bmsData.cells = bms.getPackCellInfo();
 
-        // Update single frame data
         data6400[0] = bmsData.cells.NumOfCells;
-        data6400[1] = parallel_count;
-        data6400[2] = (byte)(bmsData.ratedCap & 0xFF);
-        data6400[3] =  (byte)((bmsData.ratedCap >> 8) & 0xFF);
+        data6400[2] = (uint8_t)(bmsData.cells.CellDiff & 0xFF);
 
-        data6401[0] = (byte)(bmsData.cycle & 0xFF);
-        data6401[1] = (byte)((bmsData.cycle >> 8) & 0xFF);
-        data6401[2] = (byte)(MNT & 0xFF);
-        data6401[3] = (byte)((MNT >> 8) & 0xFF);
-        data6401[4] = (byte)(LNT & 0xFF);
-        data6401[5] = (byte)((LNT >> 8) & 0xFF);
+        data6401[0] = (uint8_t)(bmsData.cycle & 0xFF);
+        data6401[1] = (uint8_t)((bmsData.cycle >> 8) & 0xFF);
 
-        for (byte i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
-            dataCellVoltages[i * 2]     = (byte)(bmsData.cells.CellVoltage[i] & 0xFF);
-            dataCellVoltages[i * 2 + 1] = (byte)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
+        for (uint8_t i = 0; i < bmsData.cells.NumOfCells && i < 16; i++) {
+            dataCellVoltages[i * 2]     = (uint8_t)(bmsData.cells.CellVoltage[i] & 0xFF);
+            dataCellVoltages[i * 2 + 1] = (uint8_t)((bmsData.cells.CellVoltage[i] >> 8) & 0xFF);
         }
     }
     */
@@ -251,20 +236,18 @@ static void updateBmsData() {
 // MULTIFRAME PROTOCOL: Start / Data / End
 // ==================================================
 static void sendStartFrame() {
-    byte payload[1] = { activeCmd->totalLen };
-    unsigned long canId = CAN_BASE_START(activeSource) | activeCmd->cmdId;
-    CAN.sendMsgBuf(canId, 1, 1, payload);
+    uint8_t payload[1] = { activeCmd->totalLen };
+    uint32_t canId = CAN_BASE_START(activeSource) | activeCmd->cmdId;
+    canSend(canId, payload, 1);
 
     state = WAIT_ACK_START;
     lastStateChange = millis();
 }
 
 static void sendDataFrame() {
-    unsigned long canId = CAN_BASE_DATA(activeSource) | (unsigned long)frameIndex;
-
-    byte len = activeCmd->dataFrameLens[frameIndex];
-    // Cast away const for MCP_CAN API (it doesn't modify the buffer)
-    CAN.sendMsgBuf(canId, 1, len, (byte*)activeCmd->dataFrames[frameIndex]);
+    uint32_t canId = CAN_BASE_DATA(activeSource) | (uint32_t)frameIndex;
+    uint8_t len = activeCmd->dataFrameLens[frameIndex];
+    canSend(canId, activeCmd->dataFrames[frameIndex], len);
 
     frameIndex++;
     state = WAIT_ACK_DATA;
@@ -272,13 +255,8 @@ static void sendDataFrame() {
 }
 
 static void sendEndFrame() {
-    unsigned long canId = CAN_BASE_END(activeSource) | activeCmd->endIdOffset;
-
-    if (activeCmd->endFrame != NULL && activeCmd->endFrameLen > 0) {
-        CAN.sendMsgBuf(canId, 1, activeCmd->endFrameLen, (byte*)activeCmd->endFrame);
-    } else {
-        CAN.sendMsgBuf(canId, 1, 0, NULL);
-    }
+    uint32_t canId = CAN_BASE_END(activeSource) | activeCmd->endIdOffset;
+    canSend(canId, activeCmd->endFrame, activeCmd->endFrameLen);
 
     state = WAIT_ACK_END;
     lastStateChange = millis();
@@ -290,18 +268,18 @@ static void sendEndFrame() {
 static void sendSingleFrame(uint16_t cmdId) {
     uint16_t index = cmdId - 0x6400;
     if (index >= NUM_SINGLE_FRAMES) return;
-    
-    unsigned long canId = CAN_BASE_SINGLE(activeSource) | cmdId;
-    CAN.sendMsgBuf(canId, 1, SINGLE_FRAMES[index].len, SINGLE_FRAMES[index].data);
+
+    uint32_t canId = CAN_BASE_SINGLE(activeSource) | cmdId;
+    canSend(canId, SINGLE_FRAMES[index].data, SINGLE_FRAMES[index].len);
 }
 
 // ==================================================
 // ACK HANDLER
 // ==================================================
-static bool handleAck(unsigned long rxId) {
+static void handleAck(uint32_t rxId) {
     if (activeCmd == NULL) return;
 
-    unsigned long expectedAck = CAN_BASE_ACK(activeSource) | activeCmd->cmdId;
+    uint32_t expectedAck = CAN_BASE_ACK(activeSource) | activeCmd->cmdId;
     if (rxId != expectedAck) return;
 
     switch (state) {
@@ -327,12 +305,11 @@ static bool handleAck(unsigned long rxId) {
 // ==================================================
 // REQUEST HANDLER
 // ==================================================
-static void handleRequest(unsigned long rxId) {
+static void handleRequest(uint32_t rxId) {
     uint16_t cmdLow = rxId & 0xFFFF;
 
-    // Multiframe requests: 0x__216000 - 0x__216003
     if (cmdLow >= 0x6000 && cmdLow <= 0x6003) {
-        byte src = ((rxId >> 24) & 0xFF);
+        uint8_t src = ((rxId >> 24) & 0xFF);
         if (src != 0x03 && src != 0x05) return;
 
         const MultiframeCmd* cmd = findMultiframeCmd(cmdLow);
@@ -343,9 +320,8 @@ static void handleRequest(unsigned long rxId) {
         frameIndex = 0;
         sendStartFrame();
     }
-    // Single frame requests: 0x__216400 - 0x__216405
     else if (cmdLow >= 0x6400 && cmdLow <= 0x6405) {
-        byte src = ((rxId >> 24) & 0xFF);
+        uint8_t src = ((rxId >> 24) & 0xFF);
         if (src != 0x03 && src != 0x05) return;
 
         activeSource = src;
@@ -359,63 +335,74 @@ static void handleRequest(unsigned long rxId) {
 static void sendCurrentVoltageTemp() {
     int16_t currentRaw = (int16_t)(bmsData.current / 10);
     uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10);  // units: 100mV
-    byte tempC = (byte)(bmsData.temp1 + 40.0);
+    uint8_t tempF = (uint8_t)(bmsData.temp1 * 9.0 / 5.0 + 32.0);
 
-    byte data[5] = {
-        (byte)(currentRaw & 0xFF),
-        (byte)((currentRaw >> 8) & 0xFF),
-        (byte)(voltageRaw & 0xFF),
-        (byte)((voltageRaw >> 8) & 0xFF),
-        tempC
+    uint8_t data[5] = {
+        (uint8_t)(currentRaw & 0xFF),
+        (uint8_t)((currentRaw >> 8) & 0xFF),
+        (uint8_t)(voltageRaw & 0xFF),
+        (uint8_t)((voltageRaw >> 8) & 0xFF),
+        tempF
     };
-    CAN.sendMsgBuf(CAN_ID_CURRENT_VOLTAGE, 1, 5, data);
+    canSend(CAN_ID_CURRENT_VOLTAGE, data, 5);
 }
 
 static void sendCapacitySoc() {
     uint16_t fullCap = bmsData.ratedCap * 10;
     uint16_t remainCap = bmsData.residualCap * 10;
-    byte soc = (byte)bmsData.soc;
+    uint8_t soc = (uint8_t)bmsData.soc;
 
-    // SOH estimation: FCC / design capacity * 100
     uint16_t designCap = bmsData.ratedCap;
     uint16_t fcc = (bmsData.soc > 0)
         ? (uint16_t)((uint32_t)bmsData.residualCap * 100 / (uint16_t)bmsData.soc)
         : designCap;
-    byte soh = (designCap > 0)
-        ? (byte)((uint32_t)fcc * 100 / designCap)
+    uint8_t soh = (designCap > 0)
+        ? (uint8_t)((uint32_t)fcc * 100 / designCap)
         : 100;
 
-    byte data[7] = {
-        (byte)(fullCap & 0xFF),
-        (byte)((fullCap >> 8) & 0xFF),
-        (byte)(remainCap & 0xFF),
-        (byte)((remainCap >> 8) & 0xFF),
+    uint8_t data[7] = {
+        (uint8_t)(fullCap & 0xFF),
+        (uint8_t)((fullCap >> 8) & 0xFF),
+        (uint8_t)(remainCap & 0xFF),
+        (uint8_t)((remainCap >> 8) & 0xFF),
         soc,
-        soc,   // absSoc = soc
+        soc,   // absSoc
         soh
     };
-    CAN.sendMsgBuf(CAN_ID_CAPACITY_SOC, 1, 7, data);
+    canSend(CAN_ID_CAPACITY_SOC, data, 7);
 }
 
 static void sendHeartbeat() {
-    byte data[1] = {0x00};
-    CAN.sendMsgBuf(CAN_ID_HEARTBEAT, 1, 1, data);
+    uint8_t data[1] = {0x00};
+    canSend(CAN_ID_HEARTBEAT, data, 1);
 }
 
 static void sendTimestamp() {
-    byte data[6] = {0x49, 0x11, 0x15, 0x01, 0x06, 0x26}; //Battery Time Information s/m/h d/m/y
-    CAN.sendMsgBuf(CAN_ID_TIMESTAMP, 1, 6, data);
+    uint8_t data[6] = {0x49, 0x11, 0x15, 0x01, 0x06, 0x26};
+    canSend(CAN_ID_TIMESTAMP, data, 6);
 }
 
 // ==================================================
 // SETUP
 // ==================================================
 void setup() {
-    Serial.begin(9600);
-    CAN.begin(CAN_250KBPS, MCP_8MHz);
-    CAN.setMode(MODE_NORMAL);
+    Serial.begin(115200);
 
-    Serial.println(F("Bafang CAN emulator + JBD BMS started"));
+    // BMS UART
+    bmsSerial.begin(9600, SERIAL_8N1, BMS_RX, BMS_TX);
+
+    // TWAI (CAN) config: 250kbps, no filter
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_NORMAL);
+    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_250KBITS();
+    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
+        twai_start();
+        Serial.println("TWAI (CAN) started - SN65HVD230");
+    } else {
+        Serial.println("TWAI init FAILED");
+    }
+
     updateBmsData();
 }
 
@@ -432,20 +419,14 @@ void loop() {
     }
 
     // Process incoming CAN messages
-    if (CAN.checkReceive()) {
-        byte len = 0;
-        byte buf[8];
-        CAN.readMsgBuf(&len, buf);
-        unsigned long rxId = CAN.getCanId();
+    twai_message_t rxMsg;
+    if (twai_receive(&rxMsg, 0) == ESP_OK) {
+        uint32_t rxId = rxMsg.identifier;
 
-        if (state != IDLE) {
-            if (!handleAck(rxId)) {
-                // jeśli to nie ACK → traktuj jako normalny request
-                handleRequest(rxId);
-            }
-        } else {
+        if (state != IDLE)
+            handleAck(rxId);
+        else
             handleRequest(rxId);
-        }
     }
 
     // Periodic BMS read
