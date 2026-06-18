@@ -8,7 +8,7 @@ The firmware reads battery information from a JBD BMS and translates it into CAN
 
 ## Hardware Overview
 
-![Connection Diagram](docs/wiring.png)
+ <img src="wiring.png" width="512"/>
 
 ### Main Components
 
