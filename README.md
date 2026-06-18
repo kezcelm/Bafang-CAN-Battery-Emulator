@@ -8,14 +8,16 @@ The firmware reads battery information from a JBD BMS and translates it into CAN
 
 ## Hardware Overview
 
- <img src="wiring.png" width="512"/>
+<p align="center">
+  <img src="wiring.png" style="width:100%; max-width:1000px;" />
+</p>
 
 ### Main Components
 
 * ESP32-C3 Super Mini
 * SN65HVD230 CAN Transceiver
 * JBD Smart BMS with BLE support
-* DC/DC Buck Converter
+* DC/DC Buck Converter, suitable for battery voltage
 * Bafang CAN Controller / Display
 
 ---
@@ -297,7 +299,7 @@ Developed using:
 ### BMS
 
 * JBD Smart BMS
-* 14S configuration
+* 10S configuration
 
 ### MCU
 
