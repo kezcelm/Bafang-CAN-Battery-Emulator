@@ -46,7 +46,7 @@ With the emulator connected, the BESST software detects a valid battery and allo
   <img src="bafang_beest.png" style="width:100%; max-width:1000px;" />
 </p>
 
-Battery information shown on a Bafang DP display when connected through the emulator.
+Battery information shown on a Bafang DP C245 display when connected through the emulator.
 <p align="center">
   <img src="bafang_DP_1.png" style="width:100%; max-width:1000px;" />
 </p>
