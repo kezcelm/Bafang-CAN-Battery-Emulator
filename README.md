@@ -43,15 +43,36 @@ The ESP32 acts as a gateway between the Bluetooth-enabled BMS and the Bafang CAN
 The emulator can be connected directly to the Bafang BESST diagnostic tool.
 With the emulator connected, the BESST software detects a valid battery and allows reading battery-related information without a physical Bafang battery.
 <p align="center">
-  <img src="bafang_beest.png" style="width:100%; max-width:1000px;" />
+  <img src="bafang_besst1.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_besst2.png" style="width:100%; max-width:1000px;" />
 </p>
 
 Battery information shown on a Bafang DP C245 display when connected through the emulator.
 <p align="center">
-  <img src="bafang_DP_1.png" style="width:100%; max-width:1000px;" />
+  <img src="bafang_DP.png" style="width:100%; max-width:1000px;" />
 </p>
 <p align="center">
-  <img src="bafang_DP_2.png" style="width:100%; max-width:1000px;" />
+  <img src="bafang_DP1.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP2.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP3.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP4.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP5.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP6.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP7.png" style="width:100%; max-width:1000px;" />
 </p>
 
 ---
