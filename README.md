@@ -40,6 +40,19 @@ Bafang Controller / Display
 ```
 
 The ESP32 acts as a gateway between the Bluetooth-enabled BMS and the Bafang CAN bus.
+The emulator can be connected directly to the Bafang BESST diagnostic tool.
+With the emulator connected, the BESST software detects a valid battery and allows reading battery-related information without a physical Bafang battery.
+<p align="center">
+  <img src="bafang_beest.png" style="width:100%; max-width:1000px;" />
+</p>
+
+Battery information shown on a Bafang DP display when connected through the emulator.
+<p align="center">
+  <img src="bafang_DP_1.png" style="width:100%; max-width:1000px;" />
+</p>
+<p align="center">
+  <img src="bafang_DP_2.png" style="width:100%; max-width:1000px;" />
+</p>
 
 ---
 
