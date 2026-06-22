@@ -60,8 +60,8 @@ struct BmsData {
     uint16_t cycle;
     uint16_t ratedCap;    // 10mAh units
     uint16_t residualCap; // 10mAh units
+    float tempMos;          // °C
     float temp1;          // °C
-    float temp2;          // °C
     uint16_t protection;
     uint8_t cellCount;
     float cellVoltage[24]; // V
@@ -104,8 +104,8 @@ static void bleNotifyCB(
 
             uint16_t tt1 = (bleBuffer[27] << 8) | bleBuffer[28];
             uint16_t tt2 = (bleBuffer[29] << 8) | bleBuffer[30];
-            bmsData.temp1 = (tt1 - 2731) / 10.0f;
-            bmsData.temp2 = (tt2 - 2731) / 10.0f;
+            bmsData.tempMos = (tt1 - 2731) / 10.0f;
+            bmsData.temp1 = (tt2 - 2731) / 10.0f;
 
             bmsData.valid = true;
         }
@@ -417,7 +417,7 @@ static void handleRequest(uint32_t rxId) {
 static void sendCurrentVoltageTemp() {
     int16_t currentRaw = (int16_t)(bmsData.current * 10);  // 100mA units
     uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10); // 100mV units
-    uint8_t tempC = (uint8_t)(bmsData.temp1);
+    uint8_t tempC = (uint8_t)(bmsData.temp1) + 40;          // 40'C offset
 
     uint8_t data[5] = {
         (uint8_t)(currentRaw & 0xFF),
@@ -468,7 +468,7 @@ static void sendTimestamp() {
 // SETUP
 // ==================================================
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(9600);
     delay(1000);
 
     // TWAI (CAN) init: 250kbps via SN65HVD230
