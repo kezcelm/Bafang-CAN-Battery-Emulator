@@ -417,14 +417,14 @@ static void handleRequest(uint32_t rxId) {
 static void sendCurrentVoltageTemp() {
     int16_t currentRaw = (int16_t)(bmsData.current * 10);  // 100mA units
     uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10); // 100mV units
-    uint8_t tempF = (uint8_t)(bmsData.temp1 * 9.0 / 5.0 + 32.0);
+    uint8_t tempC = (uint8_t)(bmsData.temp1);
 
     uint8_t data[5] = {
         (uint8_t)(currentRaw & 0xFF),
         (uint8_t)((currentRaw >> 8) & 0xFF),
         (uint8_t)(voltageRaw & 0xFF),
         (uint8_t)((voltageRaw >> 8) & 0xFF),
-        tempF
+        tempC
     };
     canSend(CAN_ID_CURRENT_VOLTAGE, data, 5);
 }
