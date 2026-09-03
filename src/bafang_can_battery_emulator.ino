@@ -58,8 +58,10 @@ struct BmsData {
     float current;        // A
     float soc;            // %
     uint16_t cycle;
-    uint16_t ratedCap;    // 10mAh units
+    uint16_t nominalCap;    // 10mAh units
     uint16_t residualCap; // 10mAh units
+    uint16_t fcc;         // 10mAh units
+    uint16_t chargeCap;         // 10mAh units
     float tempMos;          // °C
     float temp1;          // °C
     uint16_t protection;
@@ -83,24 +85,24 @@ static void bleNotifyCB(
 {
     for (size_t i = 0; i < len; i++)
         bleBuffer.push_back(data[i]);
-
     // Frame complete when we see end byte 0x77
     if (!bleBuffer.empty() && bleBuffer.back() == 0x77) {
-
         // Basic info response (register 0x03)
         if (bleBuffer.size() > 30 && bleBuffer[0] == 0xDD && bleBuffer[1] == 0x03) {
             uint16_t v = (bleBuffer[4] << 8) | bleBuffer[5];
             int16_t i = (bleBuffer[6] << 8) | bleBuffer[7];
 
-            bmsData.voltage = v / 100.0f;
-            bmsData.current = i / 100.0f;
+            bmsData.voltage = v / 10.0f;
+            bmsData.current = i;
 
             bmsData.residualCap = (bleBuffer[8] << 8) | bleBuffer[9];
-            bmsData.ratedCap    = (bleBuffer[10] << 8) | bleBuffer[11];
+            bmsData.nominalCap    = (bleBuffer[10] << 8) | bleBuffer[11];
             bmsData.cycle       = (bleBuffer[12] << 8) | bleBuffer[13];
 
             bmsData.protection  = (bleBuffer[20] << 8) | bleBuffer[21];
             bmsData.soc         = bleBuffer[23];
+            bmsData.fcc  = (bleBuffer[34] << 8) | bleBuffer[35];
+            bmsData.chargeCap  = (bleBuffer[36] << 8) | bleBuffer[37];
 
             uint16_t tt1 = (bleBuffer[27] << 8) | bleBuffer[28];
             uint16_t tt2 = (bleBuffer[29] << 8) | bleBuffer[30];
@@ -415,8 +417,8 @@ static void handleRequest(uint32_t rxId) {
 // PERIODIC CAN BROADCASTS
 // ==================================================
 static void sendCurrentVoltageTemp() {
-    int16_t currentRaw = (int16_t)(bmsData.current * 10);  // 100mA units
-    uint16_t voltageRaw = (uint16_t)(bmsData.voltage * 10); // 100mV units
+    int16_t currentRaw = (int16_t)(bmsData.current);  // 100mA units
+    uint16_t voltageRaw = (uint16_t)(bmsData.voltage); // 100mV units
     uint8_t tempC = (uint8_t)(bmsData.temp1) + 40;          // 40'C offset
 
     uint8_t data[5] = {
@@ -430,25 +432,21 @@ static void sendCurrentVoltageTemp() {
 }
 
 static void sendCapacitySoc() {
-    uint16_t fullCap = bmsData.ratedCap * 10;     // -> mAh
-    uint16_t remainCap = bmsData.residualCap * 10; // -> mAh
-    uint8_t soc = (uint8_t)bmsData.soc;
-
-    uint16_t designCap = bmsData.ratedCap;
-    uint16_t fcc = (bmsData.soc > 0)
-        ? (uint16_t)((uint32_t)bmsData.residualCap * 100 / (uint16_t)bmsData.soc)
-        : designCap;
-    uint8_t soh = (designCap > 0)
-        ? (uint8_t)((uint32_t)fcc * 100 / designCap)
-        : 100;
+    uint16_t nomCap = bmsData.nominalCap * 10;     // -> mAh
+    uint16_t fullChargeCap = bmsData.fcc * 10;     // -> mAh
+    uint16_t resCap = bmsData.residualCap * 10; // -> mAh
+    uint16_t chargeCap = bmsData.chargeCap * 10;
+    uint8_t relSoc = (uint8_t)bmsData.soc;
+    uint8_t absSoc = (uint32_t)(resCap * 100 + nomCap / 2) / nomCap;
+    uint8_t soh = ((uint32_t)chargeCap * 100 + resCap / 2) / resCap;
 
     uint8_t data[7] = {
-        (uint8_t)(fullCap & 0xFF),
-        (uint8_t)((fullCap >> 8) & 0xFF),
-        (uint8_t)(remainCap & 0xFF),
-        (uint8_t)((remainCap >> 8) & 0xFF),
-        soc,
-        soc,
+        (uint8_t)(fullChargeCap & 0xFF),
+        (uint8_t)((fullChargeCap >> 8) & 0xFF),
+        (uint8_t)(resCap & 0xFF),
+        (uint8_t)((resCap >> 8) & 0xFF),
+        relSoc,
+        absSoc,
         soh
     };
     canSend(CAN_ID_CAPACITY_SOC, data, 7);
